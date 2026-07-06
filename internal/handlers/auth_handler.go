@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"log"
+	"os"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -13,7 +15,6 @@ import (
 )
 
 // In-memory store — in production, use a database
-// No default users — register first via POST /api/auth/register
 var users []models.User
 
 type AuthHandler struct {
@@ -21,7 +22,48 @@ type AuthHandler struct {
 }
 
 func NewAuthHandler(cfg *config.Config) *AuthHandler {
-	return &AuthHandler{Config: cfg}
+	h := &AuthHandler{Config: cfg}
+	h.initAdminUser()
+	return h
+}
+
+// initAdminUser creates default admin from env vars if configured
+func (h *AuthHandler) initAdminUser() {
+	adminEmail := os.Getenv("ADMIN_EMAIL")
+	adminPassword := os.Getenv("ADMIN_PASSWORD")
+
+	if adminEmail == "" || adminPassword == "" {
+		log.Println("No ADMIN_EMAIL/ADMIN_PASSWORD set — no default admin user")
+		return
+	}
+
+	// Check if admin already exists
+	for _, u := range users {
+		if u.Email == adminEmail {
+			return
+		}
+	}
+
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(adminPassword), bcrypt.DefaultCost)
+	if err != nil {
+		log.Printf("Failed to hash admin password: %v", err)
+		return
+	}
+
+	admin := models.User{
+		ID:        uuid.New().String(),
+		FirstName: "Super",
+		LastName:  "Admin",
+		Email:     adminEmail,
+		Phone:     os.Getenv("ADMIN_PHONE"),
+		Password:  string(hashedPassword),
+		Role:      "admin",
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+
+	users = append(users, admin)
+	log.Printf("✅ Default admin user created: %s", adminEmail)
 }
 
 // Login handles user authentication
